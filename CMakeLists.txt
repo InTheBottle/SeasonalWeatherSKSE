@@ -67,6 +67,13 @@ target_link_libraries(
   spdlog::spdlog
 )
 
+target_compile_definitions(
+  ${PROJECT_NAME}
+  PRIVATE
+  UNICODE
+  _UNICODE
+)
+
 target_include_directories(
   ${PROJECT_NAME}
   PRIVATE

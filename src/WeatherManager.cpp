@@ -92,12 +92,17 @@ namespace SWF {
                 }
 
                 // Apply the season multiplier for this weather's classification.
+                // kUnknown weathers (quest / scripted weathers with no
+                // pleasant/cloudy/rainy/snow flag) are zeroed out so they
+                // don't compete with seasonal weathers in the region table.
                 switch (orig.classification) {
                     case WeatherClass::kPleasant: adjusted *= mults.pleasantMult; break;
                     case WeatherClass::kCloudy:   adjusted *= mults.cloudyMult;   break;
                     case WeatherClass::kRainy:    adjusted *= mults.rainyMult;    break;
                     case WeatherClass::kSnow:     adjusted *= mults.snowMult;     break;
-                    default: break;
+                    default:
+                        adjusted = 0.0f;
+                        break;
                 }
 
                 // If this was an injected entry with base 0, and the multiplier is 0,
@@ -133,14 +138,6 @@ namespace SWF {
 
         logs::info("WeatherManager: Applied '{}' season weights to {} region records",
             SeasonToString(season), regionsModified);
-
-        // Force Skyrim to re-evaluate weather from the modified table.
-        // Without this, the engine keeps its already-selected weather.
-        auto* sky = RE::Sky::GetSingleton();
-        if (sky) {
-            sky->ResetWeather();
-            logs::info("WeatherManager: Called Sky::ResetWeather() to force re-evaluation");
-        }
     }
 
     void WeatherManager::RestoreBaseChances() {
@@ -203,6 +200,14 @@ namespace SWF {
         currentSeason_ = effectiveSeason;
 
         ApplySeasonToRegions(effectiveSeason);
+
+        // Force Skyrim to re-pick weather from the modified table, but only
+        // when we actually changed something.
+        auto* sky = RE::Sky::GetSingleton();
+        if (sky) {
+            sky->ResetWeather();
+            logs::info("WeatherManager: Called Sky::ResetWeather() to force re-evaluation");
+        }
 
         hasApplied_        = true;
         lastAppliedSeason_ = effectiveSeason;

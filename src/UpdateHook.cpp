@@ -13,15 +13,14 @@ namespace SWF {
         auto& config = ConfigManager::GetSingleton().GetConfig();
         if (!config.enabled) return RE::BSEventNotifyControl::kContinue;
 
+        // Only trigger on close of menus that can advance game time
         if (!a_event->opening) {
             std::string_view menuName(a_event->menuName);
 
-            // Update after menus that may advance game time
             if (menuName == RE::SleepWaitMenu::MENU_NAME ||
-                menuName == RE::MapMenu::MENU_NAME ||
-                menuName == RE::LoadingMenu::MENU_NAME ||
-                menuName == RE::FaderMenu::MENU_NAME) {
+                menuName == RE::MapMenu::MENU_NAME) {
 
+                // Time may have advanced — season could have changed
                 WeatherManager::GetSingleton().ForceRefresh();
                 WeatherManager::GetSingleton().Update();
 
@@ -44,12 +43,10 @@ namespace SWF {
         if (!config.enabled) return RE::BSEventNotifyControl::kContinue;
 
         if (a_event->attached) {
-            WeatherManager::GetSingleton().ForceRefresh();
+            // Cell changes can mean entering a different region.
+            // Only do a lightweight check — no ForceRefresh, just Update
+            // which will only re-apply if the season actually changed.
             WeatherManager::GetSingleton().Update();
-
-            if (config.debugMode) {
-                logs::info("UpdateHook: Weather refresh triggered by cell change");
-            }
         }
 
         return RE::BSEventNotifyControl::kContinue;

@@ -182,10 +182,20 @@ namespace SWF {
                 if (entry.weather) existing.insert(entry.weather->GetFormID());
             }
 
-            // Inject missing weathers with base chance 0
+            // Inject missing weathers with base chance 0.
+            // Skip weathers classified as kUnknown — these are typically
+            // quest / scripted weathers (e.g. DA02) that should never play
+            // from region tables.
             std::uint32_t injectedCount = 0;
             for (const auto& [weatherFormID, weather] : poolIt->second) {
                 if (existing.count(weatherFormID)) continue;
+
+                auto wclass = ClassifyWeather(weather);
+                if (wclass == WeatherClass::kUnknown) {
+                    logs::info("  Region '{}': skipping quest/unknown weather '{}' [{:08X}] from injection",
+                        info.editorID, GetWeatherName(weather), weatherFormID);
+                    continue;
+                }
 
                 // Allocate a new WeatherType and add it to the BSSimpleList
                 auto* newEntry = new RE::WeatherType();

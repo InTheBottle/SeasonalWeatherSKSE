@@ -46,12 +46,5 @@ namespace SWF {
                 const RE::TESCellAttachDetachEvent* a_event,
                 RE::BSTEventSource<RE::TESCellAttachDetachEvent>* a_eventSource) override;
         };
-
-        struct MainUpdateHook {
-            static void thunk(RE::Main* a_this, float a_interval);
-            using FuncType = void(*)(RE::Main*, float);
-            static inline FuncType func = nullptr;
-            static constexpr REL::RelocationID id{ 35551, 36564 };
-        };
     };
 }

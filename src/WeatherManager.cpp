@@ -76,8 +76,15 @@ namespace SWF {
                 if (!wt || i >= info.originalWeatherEntries.size()) break;
                 const auto& orig = info.originalWeatherEntries[i];
 
-                // Start from the original base chance so repeated calls are idempotent.
-                float adjusted = static_cast<float>(orig.baseChance);
+                // For injected weathers (baseChance == 0), use a small base value
+                // so season multipliers can give them a non-zero chance.
+                // This allows e.g. snow to appear in regions that don't normally have it.
+                constexpr float kInjectedBaseChance = 10.0f;
+                float base = (orig.baseChance > 0)
+                    ? static_cast<float>(orig.baseChance)
+                    : kInjectedBaseChance;
+
+                float adjusted = base;
 
                 // Apply TESGlobal scale if the region record carries one.
                 if (orig.global) {
@@ -93,9 +100,32 @@ namespace SWF {
                     default: break;
                 }
 
+                // If this was an injected entry with base 0, and the multiplier is 0,
+                // make sure we write back 0 (not kInjectedBaseChance * 0 = 0, which is fine,
+                // but explicitly zero for clarity).
+                if (orig.baseChance == 0) {
+                    float mult = 0.0f;
+                    switch (orig.classification) {
+                        case WeatherClass::kPleasant: mult = mults.pleasantMult; break;
+                        case WeatherClass::kCloudy:   mult = mults.cloudyMult;   break;
+                        case WeatherClass::kRainy:    mult = mults.rainyMult;    break;
+                        case WeatherClass::kSnow:     mult = mults.snowMult;     break;
+                        default: mult = 0.0f; break;
+                    }
+                    if (mult <= 0.0f) adjusted = 0.0f;
+                }
+
                 // Write back; clamp to zero but allow any positive float —
                 // Skyrim normalises the table internally before selection.
-                wt->chance = static_cast<std::uint32_t>((std::max)(adjusted, 0.0f));
+                auto finalChance = static_cast<std::uint32_t>((std::max)(adjusted, 0.0f));
+                wt->chance = finalChance;
+
+                if (config.debugMode && finalChance > 0) {
+                    auto wname = RegionScanner::GetWeatherName(orig.weather);
+                    logs::info("  {} [{}]: base={} -> chance={} (mult applied for {})",
+                        info.editorID, wname, orig.baseChance, finalChance,
+                        WeatherClassToString(orig.classification));
+                }
                 ++i;
             }
             ++regionsModified;
@@ -103,9 +133,20 @@ namespace SWF {
 
         logs::info("WeatherManager: Applied '{}' season weights to {} region records",
             SeasonToString(season), regionsModified);
+
+        // Force Skyrim to re-evaluate weather from the modified table.
+        // Without this, the engine keeps its already-selected weather.
+        auto* sky = RE::Sky::GetSingleton();
+        if (sky) {
+            sky->ResetWeather();
+            logs::info("WeatherManager: Called Sky::ResetWeather() to force re-evaluation");
+        }
     }
 
     void WeatherManager::RestoreBaseChances() {
+        // First remove any injected weather entries from the region lists
+        RegionScanner::GetSingleton().RemoveInjectedWeathers();
+
         auto& regionInfos = RegionScanner::GetSingleton().GetRegionWeatherInfos();
 
         for (const auto& info : regionInfos) {

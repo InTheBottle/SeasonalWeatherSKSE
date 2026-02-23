@@ -16,6 +16,14 @@ namespace SWF {
             return;
         }
 
+        // Re-fetch the module handle here — the file-scope static in the header
+        // is captured at DLL load time, before SKSEMenuFramework is in the process.
+        menuFramework = GetModuleHandle(L"SKSEMenuFramework");
+        if (!menuFramework) {
+            logs::error("MenuUI: SKSEMenuFramework.dll is on disk but not loaded into the process");
+            return;
+        }
+
         SKSEMenuFramework::SetSection("Seasonal Weather");
 
         SKSEMenuFramework::AddSectionItem("Status", RenderStatus);
@@ -96,6 +104,7 @@ namespace SWF {
 
         if (ImGuiMCP::Button("Re-apply Season Weights")) {
             wm.ForceRefresh();
+            wm.Update();
         }
     }
 
@@ -328,6 +337,13 @@ namespace SWF {
             if (sky->overrideWeather) {
                 auto name = RegionScanner::GetWeatherName(sky->overrideWeather);
                 ImGuiMCP::Text("Sky Override Weather: %s", name.c_str());
+            }
+            if (sky->defaultWeather) {
+                auto name = RegionScanner::GetWeatherName(sky->defaultWeather);
+                auto wclass = RegionScanner::ClassifyWeather(sky->defaultWeather);
+                ImGuiMCP::Text("Next Queued Weather: %s (%s)", name.c_str(), WeatherClassToString(wclass));
+            } else {
+                ImGuiMCP::Text("Next Queued Weather: None");
             }
             if (sky->region) {
                 auto name = RegionScanner::GetRegionName(sky->region);

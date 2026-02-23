@@ -23,6 +23,8 @@ namespace SWF {
         std::string                     editorID;
         std::vector<RegionWeatherEntry> originalWeatherEntries;  // snapshot of original weather list
         std::uint32_t                   totalBaseChance = 0;
+        std::size_t                     originalEntryCount = 0;  // how many entries existed before injection
+        bool                            hasInjectedWeathers = false;
     };
 
     class RegionScanner {
@@ -33,6 +35,13 @@ namespace SWF {
         }
 
         void ScanAllRegions();
+
+        // Inject missing weathers from the worldspace pool into each region
+        // so every weather type has a chance to play regardless of region.
+        void InjectMissingWeathers();
+
+        // Remove all injected weather entries, restoring original region lists.
+        void RemoveInjectedWeathers();
 
         const std::vector<RegionWeatherInfo>& GetRegionWeatherInfos() const { return regionInfos_; }
 

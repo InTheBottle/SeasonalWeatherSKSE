@@ -1,5 +1,7 @@
 #include "RegionScanner.h"
+#include "Config.h"
 
+#include <unordered_map>
 #include <unordered_set>
 
 namespace SWF {
@@ -132,5 +134,120 @@ namespace SWF {
         }
         logs::info("  Weather classification: {} pleasant, {} cloudy, {} rainy, {} snow, {} unknown",
             pleasant, cloudy, rainy, snow, unknown);
+    }
+
+    void RegionScanner::InjectMissingWeathers() {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        auto& config = ConfigManager::GetSingleton().GetConfig();
+
+        // Step 1: Build a per-worldspace pool of all weathers found in any region.
+        // Key = worldspace FormID, Value = map of weather FormID → weather pointer.
+        std::unordered_map<RE::FormID, std::unordered_map<RE::FormID, RE::TESWeather*>> wsWeatherPools;
+
+        for (const auto& info : regionInfos_) {
+            if (!info.worldSpace) continue;
+            auto wsID = info.worldSpace->GetFormEditorID();
+            if (!wsID || !config.IsWorldspaceEnabled(wsID)) continue;
+
+            auto wsFormID = info.worldSpace->GetFormID();
+            auto& pool = wsWeatherPools[wsFormID];
+
+            for (const auto& entry : info.originalWeatherEntries) {
+                if (entry.weather) {
+                    pool[entry.weather->GetFormID()] = entry.weather;
+                }
+            }
+        }
+
+        // Step 2: For each region in an enabled worldspace, inject weathers
+        // that exist in the pool but not in this region's list.
+        std::uint32_t totalInjected = 0;
+
+        for (auto& info : regionInfos_) {
+            if (!info.worldSpace || !info.weatherData) continue;
+            auto wsID = info.worldSpace->GetFormEditorID();
+            if (!wsID || !config.IsWorldspaceEnabled(wsID)) continue;
+
+            auto wsFormID = info.worldSpace->GetFormID();
+            auto poolIt = wsWeatherPools.find(wsFormID);
+            if (poolIt == wsWeatherPools.end()) continue;
+
+            // Record original entry count before injection
+            info.originalEntryCount = info.originalWeatherEntries.size();
+
+            // Collect weather FormIDs already present in this region
+            std::unordered_set<RE::FormID> existing;
+            for (const auto& entry : info.originalWeatherEntries) {
+                if (entry.weather) existing.insert(entry.weather->GetFormID());
+            }
+
+            // Inject missing weathers with base chance 0
+            std::uint32_t injectedCount = 0;
+            for (const auto& [weatherFormID, weather] : poolIt->second) {
+                if (existing.count(weatherFormID)) continue;
+
+                // Allocate a new WeatherType and add it to the BSSimpleList
+                auto* newEntry = new RE::WeatherType();
+                newEntry->weather = weather;
+                newEntry->chance  = 0;   // base chance 0 — season multipliers will set actual value
+                newEntry->unk0C   = 0;
+                newEntry->global  = nullptr;
+
+                // Find the last element in the list, insert after it
+                auto it = info.weatherData->weatherTypes.begin();
+                auto lastIt = it;
+                for (; it != info.weatherData->weatherTypes.end(); ++it) {
+                    lastIt = it;
+                }
+                info.weatherData->weatherTypes.insert_after(lastIt, newEntry);
+
+                // Also add to our tracking info
+                RegionWeatherEntry trackEntry;
+                trackEntry.weather        = weather;
+                trackEntry.baseChance     = 0;
+                trackEntry.global         = nullptr;
+                trackEntry.classification = ClassifyWeather(weather);
+                info.originalWeatherEntries.push_back(trackEntry);
+
+                ++injectedCount;
+                ++totalInjected;
+            }
+
+            if (injectedCount > 0) {
+                info.hasInjectedWeathers = true;
+                logs::info("  Region '{}': injected {} missing weathers from worldspace pool",
+                    info.editorID, injectedCount);
+            }
+        }
+
+        logs::info("RegionScanner: Injected {} total weather entries across all regions", totalInjected);
+    }
+
+    void RegionScanner::RemoveInjectedWeathers() {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        // Rather than removing nodes from the BSSimpleList (which is fragile),
+        // we simply zero out the chance on all injected entries.  Skyrim will
+        // never pick a weather with chance 0.  The entries stay in the list
+        // harmlessly and will be overwritten again on the next season apply.
+        std::uint32_t totalZeroed = 0;
+
+        for (auto& info : regionInfos_) {
+            if (!info.hasInjectedWeathers || !info.weatherData) continue;
+
+            // Walk the BSSimpleList to the injected entries (those past originalEntryCount)
+            std::size_t idx = 0;
+            for (auto& wt : info.weatherData->weatherTypes) {
+                if (!wt) { ++idx; continue; }
+                if (idx >= info.originalEntryCount) {
+                    wt->chance = 0;
+                    ++totalZeroed;
+                }
+                ++idx;
+            }
+        }
+
+        logs::info("RegionScanner: Zeroed {} injected weather entries", totalZeroed);
     }
 }

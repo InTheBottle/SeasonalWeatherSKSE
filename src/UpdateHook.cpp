@@ -23,9 +23,10 @@ namespace SWF {
                 menuName == RE::FaderMenu::MENU_NAME) {
 
                 WeatherManager::GetSingleton().ForceRefresh();
+                WeatherManager::GetSingleton().Update();
 
                 if (config.debugMode) {
-                    logs::info("UpdateHook: Weather refresh queued by menu close: {}", menuName);
+                    logs::info("UpdateHook: Weather refresh triggered by menu close: {}", menuName);
                 }
             }
         }
@@ -44,9 +45,10 @@ namespace SWF {
 
         if (a_event->attached) {
             WeatherManager::GetSingleton().ForceRefresh();
+            WeatherManager::GetSingleton().Update();
 
             if (config.debugMode) {
-                logs::info("UpdateHook: Weather refresh queued by cell change");
+                logs::info("UpdateHook: Weather refresh triggered by cell change");
             }
         }
 
@@ -71,27 +73,10 @@ namespace SWF {
             logs::info("UpdateHook: Registered TESCellAttachDetachEvent sink");
         }
 
-        // Install frame hook for periodic updating while the player is idle
-        SKSE::GetTrampoline().create(14);
-        MainUpdateHook::func = reinterpret_cast<MainUpdateHook::FuncType>(
-            SKSE::GetTrampoline().write_call<5>(
-                MainUpdateHook::id.address(),
-                reinterpret_cast<std::uintptr_t>(MainUpdateHook::thunk)));
-        logs::info("UpdateHook: Installed Main::Update frame hook");
-
         // Do an initial weather update
         WeatherManager::GetSingleton().Update();
 
         installed_ = true;
         logs::info("UpdateHook: Installation complete");
-    }
-
-    void UpdateHook::MainUpdateHook::thunk(RE::Main* a_this, float a_interval) {
-        func(a_this, a_interval);  // call original via saved pointer
-
-        auto& config = ConfigManager::GetSingleton().GetConfig();
-        if (config.enabled) {
-            WeatherManager::GetSingleton().Update();
-        }
     }
 }

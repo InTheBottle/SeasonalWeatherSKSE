@@ -10,6 +10,9 @@ namespace {
         auto path = logs::log_directory();
         if (!path) return;
 
+        // Ensure the log directory exists
+        std::filesystem::create_directories(*path);
+
         *path /= "SeasonalWeatherFramework.log"sv;
         auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), true);
 
@@ -30,15 +33,26 @@ namespace {
         // Scan all region records from all loaded mods
         SWF::RegionScanner::GetSingleton().ScanAllRegions();
 
+        // Inject missing weathers so every weather type can play in every region
+        SWF::RegionScanner::GetSingleton().InjectMissingWeathers();
+
         // Install the update hook
         SWF::UpdateHook::GetSingleton().Install();
 
         logs::info("=== Seasonal Weather Framework: Initialization Complete ===");
     }
 
-    void OnPostLoad() {
-        // Register with SKSEMenuFramework (must be done after other plugins load)
+    void OnPostPostLoad() {
+        // Register with SKSEMenuFramework after all plugins have finished kPostLoad,
+        // so SKSEMenuFramework.dll is guaranteed to be loaded into the process.
         SWF::MenuUI::GetSingleton().Register();
+    }
+
+    void OnGameLoaded() {
+        // Runs after loading a save or starting a new game
+        logs::info("OnGameLoaded: Refreshing weather for loaded game");
+        SWF::WeatherManager::GetSingleton().ForceRefresh();
+        SWF::WeatherManager::GetSingleton().Update();
     }
 
     void MessageHandler(SKSE::MessagingInterface::Message* a_msg) {
@@ -46,8 +60,12 @@ namespace {
             case SKSE::MessagingInterface::kDataLoaded:
                 OnDataLoaded();
                 break;
-            case SKSE::MessagingInterface::kPostLoad:
-                OnPostLoad();
+            case SKSE::MessagingInterface::kPostPostLoad:
+                OnPostPostLoad();
+                break;
+            case SKSE::MessagingInterface::kPostLoadGame:
+            case SKSE::MessagingInterface::kNewGame:
+                OnGameLoaded();
                 break;
             default:
                 break;
@@ -61,7 +79,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 
     InitializeLogging();
 
-    logs::info("Seasonal Weather Framework SKSE v1.0.0 loading...");
+    logs::info("=== Seasonal Weather Framework: SKSEPluginLoad start ===");
     logs::info("  Game version: {}", a_skse->RuntimeVersion().string());
 
     // Register for SKSE messages

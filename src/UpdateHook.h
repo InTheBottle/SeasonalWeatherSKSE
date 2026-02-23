@@ -49,7 +49,8 @@ namespace SWF {
 
         struct MainUpdateHook {
             static void thunk(RE::Main* a_this, float a_interval);
-            static inline REL::Relocation<decltype(thunk)> func;
+            using FuncType = void(*)(RE::Main*, float);
+            static inline FuncType func = nullptr;
             static constexpr REL::RelocationID id{ 35551, 36564 };
         };
     };

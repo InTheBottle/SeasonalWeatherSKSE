@@ -1,0 +1,23 @@
+# Build output
+build/
+dist/
+contrib/
+
+# vcpkg installed packages (managed by manifest mode)
+vcpkg_installed/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# CMake
+CMakeUserPresets.json
+
+# Compiled objects
+*.obj
+*.pdb
+*.dll
+*.lib
+*.exp
+*.ilk

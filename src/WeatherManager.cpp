@@ -95,7 +95,7 @@ namespace SWF {
 
                 // Write back; clamp to zero but allow any positive float —
                 // Skyrim normalises the table internally before selection.
-                wt->chance = static_cast<std::uint32_t>(std::max(adjusted, 0.0f));
+                wt->chance = static_cast<std::uint32_t>((std::max)(adjusted, 0.0f));
                 ++i;
             }
             ++regionsModified;
@@ -156,8 +156,7 @@ namespace SWF {
         }
 
         if (seasonChanged && hasApplied_ && config.enableNotifications) {
-            auto msg = fmt::format("Season changed to {}", SeasonToString(effectiveSeason));
-            RE::DebugNotification(msg.c_str());
+            logs::info("WeatherManager: Season changed to {}", SeasonToString(effectiveSeason));
         }
 
         currentSeason_ = effectiveSeason;

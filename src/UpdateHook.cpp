@@ -72,7 +72,11 @@ namespace SWF {
         }
 
         // Install frame hook for periodic updating while the player is idle
-        SKSE::stl::write_thunk_call<MainUpdateHook>(MainUpdateHook::id.address());
+        SKSE::GetTrampoline().create(14);
+        MainUpdateHook::func = reinterpret_cast<MainUpdateHook::FuncType>(
+            SKSE::GetTrampoline().write_call<5>(
+                MainUpdateHook::id.address(),
+                reinterpret_cast<std::uintptr_t>(MainUpdateHook::thunk)));
         logs::info("UpdateHook: Installed Main::Update frame hook");
 
         // Do an initial weather update
@@ -83,7 +87,7 @@ namespace SWF {
     }
 
     void UpdateHook::MainUpdateHook::thunk(RE::Main* a_this, float a_interval) {
-        func(a_this, a_interval);  // call original
+        func(a_this, a_interval);  // call original via saved pointer
 
         auto& config = ConfigManager::GetSingleton().GetConfig();
         if (config.enabled) {

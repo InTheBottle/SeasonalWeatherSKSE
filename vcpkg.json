@@ -1,0 +1,13 @@
+{
+  "name": "seasonalweatherskse",
+  "version-semver": "1.0.0",
+  "dependencies": [
+    "spdlog"
+  ],
+  "overrides": [],
+  "vcpkg-configuration": {
+    "overlay-ports": [
+      "./cmake/ports"
+    ]
+  }
+}
